@@ -1,0 +1,16 @@
+* {
+  background-color: #414452;
+  color: #d1d5df;
+  font-family: Courier, monospace;
+  font-weight: 700;
+}
+
+table, th, td {
+  border: 1px solid;
+  border-collapse: collapse;
+}
+
+th, td {
+  padding: 8px;
+}
+
