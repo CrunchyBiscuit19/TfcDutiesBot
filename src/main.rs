@@ -81,10 +81,14 @@ async fn answer(bot: Bot, msg: Message, cmd: Command) -> ResponseResult<()> {
                 sort_absences_details(&mut absences_details);                
 
                 reply_message.push_str(day_date.format("%A %d-%m-%Y").to_string().as_str());
-                for absence_details in absences_details {
-                    reply_message.push_str("\n\n");
-                    reply_message.push_str(format!("{} | {}\n", absence_details.rank.to_string()[1..].to_owned(), absence_details.name).as_str());
-                    reply_message.push_str(absence_details.details.as_str());
+                if !absences_details.is_empty() {
+                    for absence_details in absences_details {
+                        reply_message.push_str("\n\n");
+                        reply_message.push_str(format!("{} | {}\n", absence_details.rank.to_string()[1..].to_owned(), absence_details.name).as_str());
+                        reply_message.push_str(absence_details.details.as_str());
+                    }
+                } else {
+                    reply_message.push_str("\n\nNo one is absent.");
                 }
 
                 bot.send_message(msg.chat.id, reply_message)
