@@ -3,7 +3,7 @@ use std::str::FromStr;
 use chrono::NaiveDate;
 use helpers::sort_absences_details;
 use regex::Regex;
-use teloxide::{prelude::*, utils::command::BotCommands,types::ParseMode};
+use teloxide::{prelude::*, utils::command::BotCommands};
 
 mod misc;
 use crate::misc::consts;
@@ -32,8 +32,9 @@ enum Command {
     #[command(
         description = "\nShow all duties for specified person.
                         \nUsage: [/duties <name> <month>]
-                        \n- Replace spaces in name with underscore. Upper or lowercase does not matter.
-                        \n- Enter either name (January-December) or number (1-12) of month.\n",
+                        \n- Replace spaces in name with underscore. 
+                        \n- Enter either name (January-December) or number (1-12) of month.
+                        \n- Arguments are case insensitive. (ie. \"yue_yang\" and \"Yue_Yang\" are the same, \"january\" and \"January\" are the same.)\n",
         parse_with = "split",
     )]
     Duties(String, String),
