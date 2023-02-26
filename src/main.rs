@@ -1,9 +1,10 @@
 use std::str::FromStr;
 
-use chrono::NaiveDate;
-use helpers::sort_absences_details;
+use chrono::prelude::*;
+use num_traits::FromPrimitive;
 use regex::Regex;
 use teloxide::{prelude::*, utils::command::BotCommands};
+use titlecase::titlecase;
 
 mod misc;
 use crate::misc::consts;
@@ -35,7 +36,7 @@ enum Command {
                         \n- Replace spaces in name with underscore. 
                         \n- Enter either name (January-December) or number (1-12) of month.
                         \n- Arguments are case insensitive. (ie. \"yue_yang\" and \"Yue_Yang\" are the same, \"january\" and \"January\" are the same.)\n",
-        parse_with = "split",
+        parse_with = "split"
     )]
     Duties(String, String),
 }
@@ -46,9 +47,9 @@ async fn answer(bot: Bot, msg: Message, cmd: Command) -> ResponseResult<()> {
             bot.send_message(msg.chat.id, Command::descriptions().to_string())
                 .await?
         }
-        
+
         Command::PS(parade_state) => {
-            let mut reply_message = String::from("");
+            let mut reply_message = String::from(format!("{}\n\n", consts::PARADE_STATE_TITLE).as_str());
 
             let day_date_regex: Regex = Regex::new(r"\*(?P<day>[a-zA-Z]+)\*\s(?P<date>\d{6})")
                 .expect(consts::DAY_DATE_REGEX_ERROR_MESSAGE);
@@ -79,30 +80,69 @@ async fn answer(bot: Bot, msg: Message, cmd: Command) -> ResponseResult<()> {
                     .expect(consts::DATE_FORMATTING_ERROR_MESSAGE);
 
                 absences_details.swap_remove(0); // Remove 3WO Martin's example.
-                sort_absences_details(&mut absences_details);                
+                helpers::sort_absences_details(&mut absences_details);
 
                 reply_message.push_str(day_date.format("%A %d-%m-%Y").to_string().as_str());
                 if !absences_details.is_empty() {
                     for absence_details in absences_details {
                         reply_message.push_str("\n\n");
-                        reply_message.push_str(format!("{} | {}\n", absence_details.rank.to_string()[1..].to_owned(), absence_details.name).as_str());
+                        reply_message.push_str(
+                            format!(
+                                "{} | {}\n",
+                                absence_details.rank.to_string()[1..].to_owned(),
+                                absence_details.name
+                            )
+                            .as_str(),
+                        );
                         reply_message.push_str(absence_details.details.as_str());
                     }
                 } else {
-                    reply_message.push_str("\n\nNo one is absent.");
+                    reply_message.push_str(format!("\n\n{}", consts::NO_ABSENTEES_MESSAGE).as_str());
                 }
 
-                bot.send_message(msg.chat.id, reply_message)
-                    .await?
+                bot.send_message(msg.chat.id, reply_message).await?
             } else {
                 bot.send_message(msg.chat.id, consts::INVALID_PARADE_STATE_ERROR_MESSAGE)
                     .await?
             }
         }
-        
-        Command::Duties(_name, _month) => {
-            bot.send_message(msg.chat.id, Command::descriptions().to_string())
-                .await? //TODO
+
+        Command::Duties(name, month) => {
+            let mut reply_message = String::from(format!("{}\n\n", consts::DUTIES_TITLE).as_str());
+
+            let month_parser_int = month.parse::<u32>();
+            let mut month_detected: Option<Month> = None;
+            
+            match month_parser_int {
+                Ok(month_int) => match Month::from_u32(month_int) {
+                    Some(month_object) => {
+                        month_detected = Some(month_object);
+                    }
+                    None => {
+                        reply_message.push_str(consts::INVALID_MONTH_INT_MESSAGE);
+                    }
+                },
+                Err(_) => match Month::from_str(month.as_str()) {
+                    Ok(month_object) => {
+                        month_detected = Some(month_object);
+                    }
+                    Err(_) => {
+                        reply_message.push_str(consts::INVALID_MONTH_STR_MESSAGE);
+                    }
+                }
+            }
+
+            match month_detected {
+                Some(month_object) => {
+                    let month_query = month_object.name();
+                    let name_query = name.replace("_", " ").to_lowercase();
+                    // search spreadsheet in here
+                    reply_message.push_str(format!("{} has no duties for {}", titlecase(name_query.as_str()), month_query).as_str());
+                }
+                None => {}
+            }
+
+            bot.send_message(msg.chat.id, reply_message).await?
         }
     };
     Ok(())
