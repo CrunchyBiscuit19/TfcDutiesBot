@@ -13,7 +13,7 @@ tokio = { version =  "1.8", features = ["rt-multi-thread", "macros"] }
 regex = "1.7.1"
 chrono = "0.4.23"
 build_html = "2.2.0"
-headless_chrome = "1.0.5"
+headless_chrome = {version =  "1.0.5", git = "https://github.com/atroche/rust-headless-chrome", features = ["fetch"]}
 strum = "0.24"
 strum_macros = "0.24.3"
 dunce = "1.0.3"

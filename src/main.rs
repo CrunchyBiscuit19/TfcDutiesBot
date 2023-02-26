@@ -84,7 +84,6 @@ async fn answer(bot: Bot, msg: Message, cmd: Command) -> ResponseResult<()> {
                 bot.send_photo(
                     msg.chat.id,
                     InputFile::file(Path::new(consts::TABLE_IMAGE_FILEPATH).as_os_str()),
-                    
                 )
                 .await?
             } else {
