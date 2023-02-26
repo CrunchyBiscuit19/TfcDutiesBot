@@ -1,10 +1,9 @@
-use std::path::Path;
 use std::str::FromStr;
 
 use chrono::NaiveDate;
+use helpers::sort_absences_details;
 use regex::Regex;
-use teloxide::types::InputFile;
-use teloxide::{prelude::*, utils::command::BotCommands};
+use teloxide::{prelude::*, utils::command::BotCommands,types::ParseMode};
 
 mod misc;
 use crate::misc::consts;
@@ -35,7 +34,7 @@ enum Command {
                         \nUsage: [/duties <name> <month>]
                         \n- Replace spaces in name with underscore. Upper or lowercase does not matter.
                         \n- Enter either name (January-December) or number (1-12) of month.\n",
-        parse_with = "split"
+        parse_with = "split",
     )]
     Duties(String, String),
 }
@@ -48,6 +47,8 @@ async fn answer(bot: Bot, msg: Message, cmd: Command) -> ResponseResult<()> {
         }
         
         Command::PS(parade_state) => {
+            let mut reply_message = String::from("");
+
             let day_date_regex: Regex = Regex::new(r"\*(?P<day>[a-zA-Z]+)\*\s(?P<date>\d{6})")
                 .expect(consts::DAY_DATE_REGEX_ERROR_MESSAGE);
             let absences_details_regex =
@@ -76,16 +77,18 @@ async fn answer(bot: Bot, msg: Message, cmd: Command) -> ResponseResult<()> {
                 let day_date = NaiveDate::parse_from_str(&day_date_formatted, "%A %d%m%y")
                     .expect(consts::DATE_FORMATTING_ERROR_MESSAGE);
 
-                // Construct and render the table of parade state info.
                 absences_details.swap_remove(0); // Remove 3WO Martin's example.
-                helpers::construct_absences_details_table(&mut absences_details, &day_date);
-                helpers::render_html_table();
+                sort_absences_details(&mut absences_details);                
 
-                bot.send_photo(
-                    msg.chat.id,
-                    InputFile::file(Path::new(consts::TABLE_IMAGE_FILEPATH).as_os_str()),
-                )
-                .await?
+                reply_message.push_str(day_date.format("%A %d-%m-%Y").to_string().as_str());
+                for absence_details in absences_details {
+                    reply_message.push_str("\n\n");
+                    reply_message.push_str(format!("{} | {}\n", absence_details.rank.to_string()[1..].to_owned(), absence_details.name).as_str());
+                    reply_message.push_str(absence_details.details.as_str());
+                }
+
+                bot.send_message(msg.chat.id, reply_message)
+                    .await?
             } else {
                 bot.send_message(msg.chat.id, consts::INVALID_PARADE_STATE_ERROR_MESSAGE)
                     .await?
