@@ -29,16 +29,16 @@ enum Command {
     Help,
     #[command(description = "\nFormat parade state message. 
                             \nUsage: [/ps <parade_state_message>]\n")]
-    PS(String),
+    PS { parade_state: String },
     #[command(
         description = "\nShow all duties for specified person.
                         \nUsage: [/duties <name> <month>]
                         \n- Replace spaces in name with underscore. 
-                        \n- Enter either name (January-December) or number (1-12) of month.
-                        \n- Arguments are case insensitive. (ie. \"yue_yang\" and \"Yue_Yang\" are the same, \"january\" and \"January\" are the same.)\n",
+                        \n- Enter either name January-December / Jan-Dec or number 1-12 of month.
+                        \n- All arguments are case insensitive.\n",
         parse_with = "split"
     )]
-    Duties(String, String),
+    Duties { name: String, month: String },
 }
 
 async fn answer(bot: Bot, msg: Message, cmd: Command) -> ResponseResult<()> {
@@ -48,7 +48,7 @@ async fn answer(bot: Bot, msg: Message, cmd: Command) -> ResponseResult<()> {
                 .await?
         }
 
-        Command::PS(parade_state) => {
+        Command::PS {parade_state} => {
             let mut reply_message = String::from(format!("{}\n\n", consts::PARADE_STATE_TITLE).as_str());
 
             let day_date_regex: Regex = Regex::new(r"\*(?P<day>[a-zA-Z]+)\*\s(?P<date>\d{6})")
@@ -107,7 +107,7 @@ async fn answer(bot: Bot, msg: Message, cmd: Command) -> ResponseResult<()> {
             }
         }
 
-        Command::Duties(name, month) => {
+        Command::Duties {name, month} => {
             let mut reply_message = String::from(format!("{}\n\n", consts::DUTIES_TITLE).as_str());
 
             let month_parser_int = month.parse::<u32>();
@@ -136,7 +136,7 @@ async fn answer(bot: Bot, msg: Message, cmd: Command) -> ResponseResult<()> {
                 Some(month_object) => {
                     let month_query = month_object.name();
                     let name_query = name.replace("_", " ").to_lowercase();
-                    // search spreadsheet in here
+                    //TODO search spreadsheet in here
                     reply_message.push_str(format!("{} has no duties for {}", titlecase(name_query.as_str()), month_query).as_str());
                 }
                 None => {}
