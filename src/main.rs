@@ -48,8 +48,9 @@ async fn answer(bot: Bot, msg: Message, cmd: Command) -> ResponseResult<()> {
                 .await?
         }
 
-        Command::PS {parade_state} => {
-            let mut reply_message = String::from(format!("{}\n\n", consts::PARADE_STATE_TITLE).as_str());
+        Command::PS { parade_state } => {
+            let mut reply_message =
+                String::from(format!("{}\n\n", consts::PARADE_STATE_TITLE).as_str());
 
             let day_date_regex: Regex = Regex::new(r"\*(?P<day>[a-zA-Z]+)\*\s(?P<date>\d{6})")
                 .expect(consts::DAY_DATE_REGEX_ERROR_MESSAGE);
@@ -97,22 +98,25 @@ async fn answer(bot: Bot, msg: Message, cmd: Command) -> ResponseResult<()> {
                         reply_message.push_str(absence_details.details.as_str());
                     }
                 } else {
-                    reply_message.push_str(format!("\n\n{}", consts::NO_ABSENTEES_MESSAGE).as_str());
+                    reply_message
+                        .push_str(format!("\n\n{}", consts::NO_ABSENTEES_MESSAGE).as_str());
                 }
 
                 bot.send_message(msg.chat.id, reply_message).await?
             } else {
-                bot.send_message(msg.chat.id, consts::INVALID_PARADE_STATE_ERROR_MESSAGE)
-                    .await?
+                reply_message.push_str(
+                    format!("\n\n{}", consts::INVALID_PARADE_STATE_ERROR_MESSAGE).as_str(),
+                );
+                bot.send_message(msg.chat.id, reply_message).await?
             }
         }
 
-        Command::Duties {name, month} => {
+        Command::Duties { name, month } => {
             let mut reply_message = String::from(format!("{}\n\n", consts::DUTIES_TITLE).as_str());
 
             let month_parser_int = month.parse::<u32>();
             let mut month_detected: Option<Month> = None;
-            
+
             match month_parser_int {
                 Ok(month_int) => match Month::from_u32(month_int) {
                     Some(month_object) => {
@@ -129,7 +133,7 @@ async fn answer(bot: Bot, msg: Message, cmd: Command) -> ResponseResult<()> {
                     Err(_) => {
                         reply_message.push_str(consts::INVALID_MONTH_STR_MESSAGE);
                     }
-                }
+                },
             }
 
             match month_detected {
@@ -137,7 +141,14 @@ async fn answer(bot: Bot, msg: Message, cmd: Command) -> ResponseResult<()> {
                     let month_query = month_object.name();
                     let name_query = name.replace("_", " ").to_lowercase();
                     //TODO search spreadsheet in here
-                    reply_message.push_str(format!("{} has no duties for {}", titlecase(name_query.as_str()), month_query).as_str());
+                    reply_message.push_str(
+                        format!(
+                            "{} has no duties for {}",
+                            titlecase(name_query.as_str()),
+                            month_query
+                        )
+                        .as_str(),
+                    );
                 }
                 None => {}
             }
