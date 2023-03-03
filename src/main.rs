@@ -1,15 +1,14 @@
 use std::str::FromStr;
 
 use chrono::prelude::*;
+use google_sheets4::api::Spreadsheet;
 use num_traits::FromPrimitive;
 use regex::Regex;
 use teloxide::{prelude::*, utils::command::BotCommands};
 use titlecase::titlecase;
 
 mod misc;
-use crate::misc::consts;
-use crate::misc::enums;
-use crate::misc::structs;
+use crate::misc::{consts, enums, structs};
 
 mod helpers;
 
@@ -26,7 +25,7 @@ async fn main() {
 #[command(rename_rule = "lowercase", description = "Supported commands:")]
 enum Command {
     #[command(description = "\nDisplay this text.\n")]
-    Help,
+    Start,
     #[command(description = "\nFormat parade state message. 
                             \nUsage: [/ps <parade_state_message>]\n")]
     PS { parade_state: String },
@@ -43,7 +42,7 @@ enum Command {
 
 async fn answer(bot: Bot, msg: Message, cmd: Command) -> ResponseResult<()> {
     match cmd {
-        Command::Help => {
+        Command::Start => {
             bot.send_message(msg.chat.id, Command::descriptions().to_string())
                 .await?
         }
@@ -84,6 +83,8 @@ async fn answer(bot: Bot, msg: Message, cmd: Command) -> ResponseResult<()> {
                 helpers::sort_absences_details(&mut absences_details);
 
                 reply_message.push_str(day_date.format("%A %d-%m-%Y").to_string().as_str());
+                reply_message
+                    .push_str(format!("\n\n{} Absentees", absences_details.len()).as_str());
                 if !absences_details.is_empty() {
                     for absence_details in absences_details {
                         reply_message.push_str("\n\n");
@@ -117,6 +118,9 @@ async fn answer(bot: Bot, msg: Message, cmd: Command) -> ResponseResult<()> {
             let month_parser_int = month.parse::<u32>();
             let mut month_detected: Option<Month> = None;
 
+            let mut duties_spreadsheet: Option<Spreadsheet> = None;
+            let mut cdo_spreadsheet: Option<Spreadsheet> = None;
+
             match month_parser_int {
                 Ok(month_int) => match Month::from_u32(month_int) {
                     Some(month_object) => {
@@ -138,17 +142,32 @@ async fn answer(bot: Bot, msg: Message, cmd: Command) -> ResponseResult<()> {
 
             match month_detected {
                 Some(month_object) => {
-                    let month_query = month_object.name();
-                    let name_query = name.replace("_", " ").to_lowercase();
-                    //TODO search spreadsheet in here
-                    reply_message.push_str(
-                        format!(
-                            "{} has no duties for {}",
-                            titlecase(name_query.as_str()),
-                            month_query
-                        )
-                        .as_str(),
-                    );
+                    let _month_query = month_object.name();
+                    let _name_query = name.replace("_", " ").to_lowercase();
+
+                    let duties_spreadsheet_option =
+                        helpers::get_spreadsheet(consts::DUTIES_SPREADSHEET_ID).await;
+                    match duties_spreadsheet_option {
+                        Ok(res) => duties_spreadsheet = Some(res.1),
+                        Err(_) => {
+                            reply_message.push_str(format!("{} (Duty Roster)", consts::SPREADSHEET_RETRIEVAL_FAILED_MESSAGE).as_str())
+                        }
+                    }
+
+                    let cdo_spreadsheet_option = helpers::get_spreadsheet(consts::CDO_SPREADSHEET_ID).await;
+                    match cdo_spreadsheet_option {
+                        Ok(res) => cdo_spreadsheet = Some(res.1),
+                        Err(_) => reply_message.push_str(format!("{} (CDO)", consts::SPREADSHEET_RETRIEVAL_FAILED_MESSAGE).as_str())
+                    }
+                }
+                None => {}
+            }
+
+            match duties_spreadsheet {
+                Some(duties_spreadsheet) => {
+                    for sheet in &duties_spreadsheet.sheets.unwrap() {
+                        
+                    }
                 }
                 None => {}
             }
