@@ -1,9 +1,9 @@
 use std::{env, str::FromStr};
 
 use chrono::prelude::*;
+use csv;
 use regex::Regex;
 use serde_json;
-use csv;
 
 use crate::misc::{consts, enums, structs};
 
@@ -80,7 +80,8 @@ pub async fn get_sheet_ids(spreadsheet_id: &str) -> Option<Vec<u32>> {
 
     let resp = reqwest::get(format!(
         "https://sheets.googleapis.com/v4/spreadsheets/{}?&fields=sheets.properties&key={}",
-        spreadsheet_id, env::var("GOOGLE_API_KEY").expect(consts::MISSING_API_KEY)
+        spreadsheet_id,
+        env::var("GOOGLE_API_KEY").expect(consts::MISSING_API_KEY)
     ))
     .await;
     match resp {
@@ -91,12 +92,15 @@ pub async fn get_sheet_ids(spreadsheet_id: &str) -> Option<Vec<u32>> {
                 sheet_ids.push(sheet_metadata.properties.sheet_id);
             }
             Some(sheet_ids)
-        },
+        }
         Err(_) => None,
     }
 }
 
-pub async fn get_sheet_records(spreadsheet_id: &str, sheet_id: u32) -> Option<Vec<structs::SheetFields>> {
+pub async fn get_sheet_records(
+    spreadsheet_id: &str,
+    sheet_id: u32,
+) -> Option<Vec<structs::SheetFields>> {
     let mut sheet_records: Vec<structs::SheetFields> = vec![];
 
     let resp = reqwest::get(format!(
@@ -112,7 +116,7 @@ pub async fn get_sheet_records(spreadsheet_id: &str, sheet_id: u32) -> Option<Ve
                 sheet_records.push(result.unwrap());
             }
             Some(sheet_records)
-        },
+        }
         Err(_) => None,
     }
 }
@@ -125,17 +129,29 @@ pub fn get_duties(duties_records: Vec<structs::SheetFields>, name_query: &str) -
 
         if record.guard_duty.contains(name_query) {
             record_message.push_str("Guard Duty\n");
-            let personnel: Vec<&str> = record.guard_duty.split("\n").filter(|p| !p.contains(name_query)).collect();
+            let personnel: Vec<&str> = record
+                .guard_duty
+                .split("\n")
+                .filter(|p| !p.contains(name_query))
+                .collect();
             record_message.push_str(format!("+ [{}]\n", personnel.join(", ")).as_str());
         }
         if record.cffs.contains(name_query) {
             record_message.push_str("CFFS\n");
-            let personnel: Vec<&str> = record.cffs.split("\n").filter(|p| !p.contains(name_query)).collect();
+            let personnel: Vec<&str> = record
+                .cffs
+                .split("\n")
+                .filter(|p| !p.contains(name_query))
+                .collect();
             record_message.push_str(format!("+ [{}]\n", personnel.join(", ")).as_str());
         }
         if record.others.contains(name_query) {
             record_message.push_str("OTHERS\n");
-            let personnel: Vec<&str> = record.others.split("\n").filter(|p| !p.contains(name_query)).collect();
+            let personnel: Vec<&str> = record
+                .others
+                .split("\n")
+                .filter(|p| !p.contains(name_query))
+                .collect();
             record_message.push_str(format!("+ [{}]\n", personnel.join(", ")).as_str());
         }
         if record.od.contains(name_query) {
@@ -143,7 +159,16 @@ pub fn get_duties(duties_records: Vec<structs::SheetFields>, name_query: &str) -
         }
 
         if record_message.len() > 0 {
-            record_message.insert_str(0, format!("\n{}\n", record.date).as_str())
+            record_message.insert_str(
+                0,
+                format!(
+                    "\n{}\n",
+                    NaiveDate::parse_from_str(&record.date, "%d/%m/%y")
+                        .expect(consts::DATE_FORMATTING_ERROR_MESSAGE)
+                        .format("%d-%m-%Y, %A")
+                )
+                .as_str(),
+            )
         }
 
         duties_message.push_str(record_message.as_str())
@@ -164,15 +189,20 @@ pub async fn find_duties(name: String, month_object: Month) -> String {
             if (month_query - 1) as usize >= sheet_ids.len() {
                 reply_message.push_str(consts::MISSING_DUTIES_MONTH_SHEET);
             } else {
-                match get_sheet_records(consts::DUTIES_SPREADSHEET_ID, sheet_ids[(month_query - 1) as usize]).await {
+                match get_sheet_records(
+                    consts::DUTIES_SPREADSHEET_ID,
+                    sheet_ids[(month_query - 1) as usize],
+                )
+                .await
+                {
                     Some(duties_records) => {
                         reply_message.push_str(get_duties(duties_records, name_query).as_str());
-                    },
-                    None => reply_message.push_str(consts::MISSING_DUTIES_MONTH_SHEET)
+                    }
+                    None => reply_message.push_str(consts::MISSING_DUTIES_MONTH_SHEET),
                 }
-            }            
-        },
-        None => reply_message.push_str(consts::MISSING_DUTIES_MONTH_SHEET)
+            }
+        }
+        None => reply_message.push_str(consts::MISSING_DUTIES_MONTH_SHEET),
     }
 
     reply_message
