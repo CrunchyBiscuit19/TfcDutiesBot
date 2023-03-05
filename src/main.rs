@@ -1,133 +1,155 @@
 use std::str::FromStr;
 
 use chrono::prelude::*;
-use google_sheets4::api::Spreadsheet;
 use num_traits::FromPrimitive;
-use regex::Regex;
-use teloxide::{prelude::*, utils::command::BotCommands};
-use titlecase::titlecase;
+use teloxide::{
+    dispatching::{dialogue, dialogue::InMemStorage, UpdateFilterExt, UpdateHandler},
+    prelude::*,
+    types::{InlineKeyboardButton, InlineKeyboardMarkup},
+    utils::command::BotCommands,
+};
 
 mod misc;
-use crate::misc::{consts, enums, structs};
-
+use crate::misc::{bot_dialogues::State, consts};
 mod helpers;
+
+type CurrentDialogue = Dialogue<State, InMemStorage<State>>;
+type HandlerResult = Result<(), Box<dyn std::error::Error + Send + Sync>>;
+
+#[derive(BotCommands, Clone)]
+#[command(
+    rename_rule = "lowercase",
+    description = "These commands are supported:"
+)]
+enum Command {
+    #[command(description = "Display this text.")]
+    Help,
+    #[command(description = "Start the dialogue with the bot.")]
+    Start,
+}
+
+fn schema() -> UpdateHandler<Box<dyn std::error::Error + Send + Sync + 'static>> {
+    use dptree::case;
+
+    let command_handler = teloxide::filter_command::<Command, _>()
+        .branch(case![State::Start].branch(case![Command::Start].endpoint(start)));
+
+    let message_handler = Update::filter_message()
+        .branch(command_handler)
+        .branch(case![State::HandleParadeState].endpoint(handle_parade_state))
+        .branch(case![State::GetName].endpoint(get_name))
+        .branch(case![State::GetMonth { name }].endpoint(get_month));
+
+    let callback_query_handler = Update::filter_callback_query()
+        .branch(case![State::PerformAction].endpoint(perform_action));
+
+    dialogue::enter::<Update, InMemStorage<State>, State, _>()
+        .branch(message_handler)
+        .branch(callback_query_handler)
+}
 
 #[tokio::main]
 async fn main() {
-    pretty_env_logger::init();
-    log::info!("Starting command bot...");
-
     let bot = Bot::from_env();
-    Command::repl(bot, answer).await;
+
+    Dispatcher::builder(bot, schema())
+        .dependencies(dptree::deps![InMemStorage::<State>::new()])
+        .enable_ctrlc_handler()
+        .build()
+        .dispatch()
+        .await;
 }
 
-#[derive(BotCommands, Clone)]
-#[command(rename_rule = "lowercase", description = "Supported commands:")]
-enum Command {
-    #[command(description = "\nDisplay this text.\n")]
-    Start,
-    #[command(description = "\nFormat parade state message. 
-                            \nUsage: [/ps <parade_state_message>]\n")]
-    PS { parade_state: String },
-    #[command(
-        description = "\nShow all duties for specified person.
-                        \nUsage: [/duties <name> <month>]
-                        \n- Replace spaces in name with underscore. 
-                        \n- Enter either name January-December / Jan-Dec or number 1-12 of month.
-                        \n- All arguments are case insensitive.\n",
-        parse_with = "split"
-    )]
-    Duties { name: String, month: String },
+async fn start(bot: Bot, dialogue: CurrentDialogue) -> HandlerResult {
+    let choices = ["PS", "Duties"].map(|choice| InlineKeyboardButton::callback(choice, choice));
+
+    bot.send_message(
+        dialogue.chat_id(),
+        concat!(
+            "START",
+            "\n\n",
+            "- Select PS to format parade state messages.",
+            "\n\n",
+            "- Select Duties to retrieve duty information for specified GA."
+        ),
+    )
+    .reply_markup(InlineKeyboardMarkup::new([choices]))
+    .await?;
+
+    dialogue.update(State::PerformAction).await?;
+
+    Ok(())
 }
 
-async fn answer(bot: Bot, msg: Message, cmd: Command) -> ResponseResult<()> {
-    match cmd {
-        Command::Start => {
-            bot.send_message(msg.chat.id, Command::descriptions().to_string())
-                .await?
-        }
-
-        Command::PS { parade_state } => {
-            let mut reply_message =
-                String::from(format!("{}\n\n", consts::PARADE_STATE_TITLE).as_str());
-
-            let day_date_regex: Regex = Regex::new(r"\*(?P<day>[a-zA-Z]+)\*\s(?P<date>\d{6})")
-                .expect(consts::DAY_DATE_REGEX_ERROR_MESSAGE);
-            let absences_details_regex =
-                Regex::new(r"\d\.\s(?P<rank>[a-zA-Z\d]{3,4})\s(?P<name>.+)\s\((?P<details>.+)\)")
-                    .expect(consts::ABSENCES_DETAILS_REGEX_ERROR_MESSAGE);
-
-            let day_date_capture = day_date_regex.captures(&parade_state);
-            let absences_details_captures = absences_details_regex.captures_iter(&parade_state);
-
-            // Absence details gather and sort by rank.
-            let mut absences_details: Vec<structs::AbsenceInfo> = vec![];
-            for absence_details in absences_details_captures {
-                absences_details.push(structs::AbsenceInfo {
-                    rank: enums::Ranks::from_str(format!("R{}", &absence_details["rank"]).as_str())
-                        .unwrap_or(enums::Ranks::RUNKNOWN),
-                    name: String::from(&absence_details["name"]),
-                    details: String::from(&absence_details["details"]),
-                });
+async fn perform_action(bot: Bot, dialogue: CurrentDialogue, q: CallbackQuery) -> HandlerResult {
+    if let Some(choice) = &q.data {
+        match choice.as_str() {
+            "PS" => {
+                bot.send_message(
+                    dialogue.chat_id(),
+                    "Copy and paste the parade state message here.",
+                )
+                .await?;
+                dialogue.update(State::HandleParadeState).await?;
             }
-
-            // If message is valid parade state message.
-            if day_date_capture.is_some() || !absences_details.is_empty() {
-                let day_date_values = day_date_capture.unwrap();
-                let day_date_formatted =
-                    format!("{} {}", &day_date_values["day"], &day_date_values["date"]);
-                let day_date = NaiveDate::parse_from_str(&day_date_formatted, "%A %d%m%y")
-                    .expect(consts::DATE_FORMATTING_ERROR_MESSAGE);
-
-                absences_details.swap_remove(0); // Remove 3WO Martin's example.
-                helpers::sort_absences_details(&mut absences_details);
-
-                reply_message.push_str(day_date.format("%A %d-%m-%Y").to_string().as_str());
-                reply_message
-                    .push_str(format!("\n\n{} Absentees", absences_details.len()).as_str());
-                if !absences_details.is_empty() {
-                    for absence_details in absences_details {
-                        reply_message.push_str("\n\n");
-                        reply_message.push_str(
-                            format!(
-                                "{} | {}\n",
-                                absence_details.rank.to_string()[1..].to_owned(),
-                                absence_details.name
-                            )
-                            .as_str(),
-                        );
-                        reply_message.push_str(absence_details.details.as_str());
-                    }
-                } else {
-                    reply_message
-                        .push_str(format!("\n\n{}", consts::NO_ABSENTEES_MESSAGE).as_str());
-                }
-
-                bot.send_message(msg.chat.id, reply_message).await?
-            } else {
-                reply_message.push_str(
-                    format!("\n\n{}", consts::INVALID_PARADE_STATE_ERROR_MESSAGE).as_str(),
-                );
-                bot.send_message(msg.chat.id, reply_message).await?
+            "Duties" => {
+                bot.send_message(dialogue.chat_id(), "Type your name.")
+                    .await?;
+                dialogue.update(State::GetName).await?;
             }
+            _ => dialogue.update(State::Start).await?,
         }
+    }
 
-        Command::Duties { name, month } => {
-            let mut reply_message = String::from(format!("{}\n\n", consts::DUTIES_TITLE).as_str());
+    Ok(())
+}
 
+async fn handle_parade_state(bot: Bot, dialogue: CurrentDialogue, msg: Message) -> HandlerResult {
+    match msg.text().map(ToOwned::to_owned) {
+        Some(parade_state) => {
+            let formatted_parade_state = helpers::format_parade_state(parade_state);
+            bot.send_message(dialogue.chat_id(), formatted_parade_state)
+                .await?;
+            dialogue.exit().await?;
+        }
+        None => {}
+    }
+    Ok(())
+}
+
+async fn get_name(bot: Bot, dialogue: CurrentDialogue, msg: Message) -> HandlerResult {
+    match msg.text().map(ToOwned::to_owned) {
+        Some(name) => {
+            bot.send_message(
+                dialogue.chat_id(),
+                "Type the month. (1-12, Jan-Dec, January-December)",
+            )
+            .await?;
+            dialogue.update(State::GetMonth { name }).await?;
+        }
+        None => {}
+    }
+    Ok(())
+}
+
+async fn get_month(
+    bot: Bot,
+    dialogue: CurrentDialogue,
+    name: String,
+    msg: Message,
+) -> HandlerResult {
+    match msg.text().map(ToOwned::to_owned) {
+        Some(month) => {
             let month_parser_int = month.parse::<u32>();
             let mut month_detected: Option<Month> = None;
-
-            let mut duties_spreadsheet: Option<Spreadsheet> = None;
-            let mut cdo_spreadsheet: Option<Spreadsheet> = None;
-
             match month_parser_int {
                 Ok(month_int) => match Month::from_u32(month_int) {
                     Some(month_object) => {
                         month_detected = Some(month_object);
                     }
                     None => {
-                        reply_message.push_str(consts::INVALID_MONTH_INT_MESSAGE);
+                        bot.send_message(dialogue.chat_id(), consts::INVALID_MONTH_INT_MESSAGE).await?;
+                        dialogue.exit().await?
                     }
                 },
                 Err(_) => match Month::from_str(month.as_str()) {
@@ -135,45 +157,21 @@ async fn answer(bot: Bot, msg: Message, cmd: Command) -> ResponseResult<()> {
                         month_detected = Some(month_object);
                     }
                     Err(_) => {
-                        reply_message.push_str(consts::INVALID_MONTH_STR_MESSAGE);
+                        bot.send_message(dialogue.chat_id(), consts::INVALID_MONTH_STR_MESSAGE).await?;
+                        dialogue.exit().await?
                     }
                 },
             }
 
             match month_detected {
                 Some(month_object) => {
-                    let _month_query = month_object.name();
-                    let _name_query = name.replace("_", " ").to_lowercase();
-
-                    let duties_spreadsheet_option =
-                        helpers::get_spreadsheet(consts::DUTIES_SPREADSHEET_ID).await;
-                    match duties_spreadsheet_option {
-                        Ok(res) => duties_spreadsheet = Some(res.1),
-                        Err(_) => {
-                            reply_message.push_str(format!("{} (Duty Roster)", consts::SPREADSHEET_RETRIEVAL_FAILED_MESSAGE).as_str())
-                        }
-                    }
-
-                    let cdo_spreadsheet_option = helpers::get_spreadsheet(consts::CDO_SPREADSHEET_ID).await;
-                    match cdo_spreadsheet_option {
-                        Ok(res) => cdo_spreadsheet = Some(res.1),
-                        Err(_) => reply_message.push_str(format!("{} (CDO)", consts::SPREADSHEET_RETRIEVAL_FAILED_MESSAGE).as_str())
-                    }
+                    bot.send_message(dialogue.chat_id(), helpers::find_duties(name, month_object).await).await?;
+                    dialogue.exit().await?
                 }
                 None => {}
             }
-
-            match duties_spreadsheet {
-                Some(duties_spreadsheet) => {
-                    for sheet in &duties_spreadsheet.sheets.unwrap() {
-                        
-                    }
-                }
-                None => {}
-            }
-
-            bot.send_message(msg.chat.id, reply_message).await?
         }
-    };
+        None => {}
+    }
     Ok(())
 }

@@ -16,9 +16,7 @@ pub const NO_ABSENTEES_MESSAGE: &str = "No absentees.";
 pub const INVALID_MONTH_INT_MESSAGE: &str = "Month not within 1 and 12.";
 pub const INVALID_MONTH_STR_MESSAGE: &str = "Cannot determine month from argument.";
 
-pub const PRIVATE_KEY_NOT_FOUND_MESSAGE: &str = "Cannot find private key file.";
-pub const AUTHENTICATOR_FAILED_ERROR_MESSAGE: &str = "OAuth2 authenticator failed.";
-pub const SPREADSHEET_RETRIEVAL_FAILED_MESSAGE: &str = "Cannot retrieve spreadsheet.";
-
 pub const DUTIES_SPREADSHEET_ID: &str = "1aCHk12Xrw8TqUXdR1e7m6LkS3SBK6LsnzQmRwzKryQU";
-pub const CDO_SPREADSHEET_ID: &str = "1iOKqte4heZtyyC-aeQtBaddS1lfQiO_J50ortTmyefo";
+
+pub const MISSING_DUTIES_MONTH_SHEET: &str = "Cannot find duties spreadsheet for that month.";
+pub const MISSING_API_KEY: &str = "No Google API Key found.";
